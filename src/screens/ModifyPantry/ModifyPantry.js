@@ -1,114 +1,167 @@
-import React, { useEffect, useState } from 'react'
-import { FlatList, Keyboard, Text, TextInput, TouchableOpacity, View } from 'react-native'
-import { useNavigation } from '@react-navigation/native';
-import styles from './styles';
-import { firebase } from '../../firebase/config'
+import React from 'react'
+import {
+  FlatList,
+  View,
+  ActivityIndicator,
+  TouchableOpacity
+} from 'react-native'
+import filter from 'lodash.filter'
+import { ApplicationProvider, Text, Avatar, Input } from '@ui-kitten/components'
+import { mapping, light as lightTheme } from '@eva-design/eva'
 
-export default (props) => {
+class HomeScreen extends React.Component {
+  state = {
+    loading: false,
+    data: [],
+    page: 1,
+    seed: 1,
+    error: null,
+    query: '',
+    fullData: []
+  }
 
-    const [entityText, setEntityText] = useState('')
-    const [entities, setEntities] = useState([])
-    const navigation = useNavigation();
+  componentDidMount() {
+    this.makeRemoteRequest()
+  }
 
-    const entityRef = firebase.firestore().collection('entities')
-    const userID = props.extraData.id
+  makeRemoteRequest = () => {
+    const { page, seed } = this.state
+    const url = `https://randomuser.me/api/?seed=${seed}&page=${page}&results=20`
+    this.setState({ loading: true })
 
-    useEffect(() => {
-        entityRef
-            .where("authorID", "==", userID)
-            .orderBy('createdAt', 'desc')
-            .onSnapshot(
-                querySnapshot => {
-                    const newEntities = []
-                    querySnapshot.forEach(doc => {
-                        const entity = doc.data()
-                        entity.id = doc.id
-                        newEntities.push(entity)
-                    });
-                    setEntities(newEntities)
-                },
-                error => {
-                    console.log(error)
-                }
-            )
-    }, [])
+    fetch(url)
+      .then(res => res.json())
+      .then(res => {
+        this.setState({
+          data: page === 1 ? res.results : [...this.state.data, ...res.results],
+          error: res.error || null,
+          loading: false,
+          fullData: res.results
+        })
+      })
+      .catch(error => {
+        this.setState({ error, loading: false })
+      })
+  }
 
-    const onAddButtonPress = () => {
-        if (entityText && entityText.length > 0) {
-            const timestamp = firebase.firestore.FieldValue.serverTimestamp();
-            const data = {
-                text: entityText,
-                authorID: userID,
-                createdAt: timestamp,
-            };
-            entityRef
-                .add(data)
-                .then(_doc => {
-                    setEntityText('')
-                    Keyboard.dismiss()
-                })
-                .catch((error) => {
-                    alert(error)
-                });
-        }
+  contains = ({ name, email }, query) => {
+    const { first, last } = name
+    if (
+      first.includes(query) ||
+      last.includes(query) ||
+      email.includes(query)
+    ) {
+      return true
     }
+    return false
+  }
 
-    const renderEntity = ({ item, index }) => {
-        return (
-            <View style={styles.entityContainer}>
-                <Text style={styles.entityText}>
-                    {index}. {item.text}
-                </Text>
-            </View>
-        )
-    }
+  handleSearch = text => {
+    const formattedQuery = text.toLowerCase()
+    const data = filter(this.state.fullData, user => {
+      return this.contains(user, formattedQuery)
+    })
+    this.setState({ data, query: text })
+  }
 
-    const submitPressed = () => {
-        navigation.navigate("Recipe Details");
-    }
+  renderHeader = () => (
+    <View
+      style={{
+        backgroundColor: '#fff',
+        padding: 10,
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}>
+      <Input
+        autoCapitalize='none'
+        autoCorrect={false}
+        onChangeText={this.handleSearch}
+        status='info'
+        placeholder='Search'
+        style={{
+          borderRadius: 25,
+          borderColor: '#333',
+          backgroundColor: '#fff'
+        }}
+        textStyle={{ color: '#000' }}
+        clearButtonMode='always'
+      />
+    </View>
+  )
 
+  renderSeparator = () => {
     return (
-        <View style={styles.container}>
-            <View style={styles.formContainer}>
-            {/* <TextInput
-             style={styles.inputSearch}
-             placeholder='Search'
-             value={entityText}
-             placeholderTextColor="#A6BCD0"
-             underlineColorAndroid="transparent"
-             autoCapitalize="none"
-            />
-            <TouchableOpacity style={styles.submitBtnSearch} onPress={submitPressed}>
-                <Text style={styles.buttonText}>Search</Text>
-            </TouchableOpacity> */}
-                <TextInput
-                    style={styles.input}
-                    placeholder='Add new entity'
-                    placeholderTextColor="#A6BCD0"
-                    onChangeText={(text) => setEntityText(text)}
-                    value={entityText}
-                    underlineColorAndroid="transparent"
-                    autoCapitalize="none"
-                />
-                <TouchableOpacity style={styles.button} onPress={onAddButtonPress}>
-                    <Text style={styles.buttonText}>Add</Text>
-                </TouchableOpacity>
-            </View>
-            {entities && (
-                <View style={styles.listContainer}>
-                    <FlatList
-                        data={entities}
-                        renderItem={renderEntity}
-                        keyExtractor={(item) => item.id}
-                        removeClippedSubviews={true}
-                    />
-                </View>
-            )}
-            <TouchableOpacity style={styles.submitBtn} onPress={submitPressed}>
-                <Text style={styles.buttonText}>Find Recipes</Text>
-            </TouchableOpacity>
-
-        </View>
+      <View
+        style={{
+          height: 1,
+          width: '86%',
+          backgroundColor: '#CED0CE',
+          marginLeft: '5%'
+        }}
+      />
     )
+  }
 
+  renderFooter = () => {
+    if (!this.state.loading) return null
+    return (
+      <View
+        style={{
+          paddingVertical: 20,
+          borderTopWidth: 1,
+          borderColor: '#CED0CE'
+        }}>
+        <ActivityIndicator animating size='large' />
+      </View>
+    )
+  }
+
+  render() {
+    return (
+      <View
+        style={{
+          flex: 1,
+          paddingHorizontal: 20,
+          paddingVertical: 20,
+          marginTop: 40
+        }}>
+        <FlatList
+          data={this.state.data}
+          renderItem={({ item }) => (
+            <TouchableOpacity onPress={() => alert('Item pressed!')}>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  padding: 16,
+                  alignItems: 'center'
+                }}>
+                <Avatar
+                  source={{ uri: item.picture.thumbnail }}
+                  size='giant'
+                  style={{ marginRight: 16 }}
+                />
+                <Text
+                  category='s1'
+                  style={{
+                    color: '#000'
+                  }}>{`${item.name.first} ${item.name.last}`}</Text>
+              </View>
+            </TouchableOpacity>
+          )}
+          keyExtractor={item => item.email}
+          ItemSeparatorComponent={this.renderSeparator}
+          ListHeaderComponent={this.renderHeader}
+          ListFooterComponent={this.renderFooter}
+        />
+      </View>
+    )
+  }
 }
+
+const App = () => (
+  <ApplicationProvider mapping={mapping} theme={lightTheme}>
+    <HomeScreen />
+  </ApplicationProvider>
+)
+
+export default App
